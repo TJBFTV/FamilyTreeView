@@ -119,28 +119,37 @@ class FamilyTreeViewTreeBuilder():
         self.expander_types_expanded = self.ftv._config.get("expanders.familytreeview-expander-types-expanded")
 
         self.use_progress = self.ftv._config.get("experimental.familytreeview-tree-builder-use-progress")
-        if self.use_progress:
-            self.set_progress_meter_pass(
-                _("Building tree..."),
-            )
 
-        failed = False
-        try:
-            self.process_person(
-                root_person_handle, 0, 0,
-                ahnentafel=1
-            )
-        except RecursionError:
-            failed = True
-            text = (
-                "The following are known causes of this issue. They will be "
-                "addressed in a future update.\n"
-                "- One or multiple loops in the database near the active "
-                "person. \n"
-                "Possible workaround: Try to reduce the number of generations "
-                "and/or disable expander expansion by default in the "
-                "FamilyTreeView's config window."
-            )
+        try: # try ... finally to definitely close progress meter
+            if self.use_progress:
+                self.set_progress_meter_pass(
+                    _("Preparing badges..."),
+                )
+
+            self.ftv.badge_manager.prepare_badges()
+
+            if self.use_progress:
+                self.set_progress_meter_pass(
+                    _("Building tree..."),
+                )
+
+            failed = False
+            try:
+                self.process_person(
+                    root_person_handle, 0, 0,
+                    ahnentafel=1
+                )
+            except RecursionError:
+                failed = True
+                text = (
+                    "The following are known causes of this issue. They will be "
+                    "addressed in a future update.\n"
+                    "- One or multiple loops in the database near the active "
+                    "person. \n"
+                    "Possible workaround: Try to reduce the number of generations "
+                    "and/or disable expander expansion by default in the "
+                    "FamilyTreeView's config window."
+                )
         finally:
             # Close the progress meter even when unknown errors occur.
             if self.use_progress:
@@ -416,6 +425,12 @@ class FamilyTreeViewTreeBuilder():
 
         children_possible = person_generation <= 1
 
+        person_is_s1_in_primary_family = False # fallback
+        if len(family_handles) > 0:
+            primary_family = self.dbstate.db.get_family_from_handle(family_handles[0])
+            if primary_family is not None:
+                person_is_s1_in_primary_family = primary_family.get_father_handle() == person_handle
+
         for i_family, family_handle in enumerate(family_handles):
             if self.get_cancelled():
                 break
@@ -466,13 +481,13 @@ class FamilyTreeViewTreeBuilder():
 
                 if children_possible:
                     # Place the family so there is enough space for family and children.
-                    if person_is_s1:
+                    if person_is_s1_in_primary_family:
                         # Family will be on the left
                         x_family = x_person + person_bounds["st_l"] - max(family_width/2, children_bounds["st_r"]) - self.canvas_manager.other_families_sep
                     else:
                         x_family = x_person + person_bounds["st_r"] + max(family_width/2, -children_bounds["st_l"]) + self.canvas_manager.other_families_sep
                 else:
-                    if person_is_s1:
+                    if person_is_s1_in_primary_family:
                         # Family will be on the left
                         x_family = x_person + person_bounds["gs_l"] - family_width/2 - self.canvas_manager.other_families_sep
                     else:
